@@ -30,7 +30,8 @@ def get_dir_config(dir_path: str, *, dir_name: str = '_attrs', config_name: str 
     path_dir = os.path.join(dir_path, dir_name)
 
     if not os.path.exists(path_dir):
-        set_dir_config(dir_path, {}, dir_name=dir_name, config_name=config_name)
+        return None
+        # set_dir_config(dir_path, {}, dir_name=dir_name, config_name=config_name)
         # raise Exception()
 
     cp.path_file = path_dir
@@ -51,21 +52,34 @@ def set_dir_config(dir_path: str, data: dict, *, dir_name: str = '_attrs', confi
     cp.set_value('all', data)
 
 
-def get_signature() :
-    pass
-
-
 dir_config_signature = Schema({
-    'all': {
-        Optional('files'): [
-            {
-                'filename': str,
-                'release_filename': str,
-                'title': str,
-                'descriprion': str,
-                Optional('categories'): str,
-                'tags': list[str]
-            }
-        ]
-    }
+    Optional('files'): [
+        {
+            'filename': str,
+            'release_filename': str,
+            'title': str,
+            'descriprion': str,
+            Optional('categories'): str,
+            'keywords': str,
+            Optional('mature_content'): bool,
+            Optional('illustration'): bool,
+            Optional('editorial'): bool,
+            Optional('price1'): float | int,
+            Optional('price2'): float | int
+        }
+    ]
 })
+
+
+# dir_config_signature = Schema({
+#     Optional('files'): [
+#         {
+#             'filename': str,
+#             'release_filename': str,
+#             'title': str,
+#             'descriprion': str,
+#             Optional('categories'): str,
+#             'keywords': list[str]
+#         }
+#     ]
+# })

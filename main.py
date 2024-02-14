@@ -1,4 +1,7 @@
 import os
+import sys
+
+from loguru import logger
 
 import dearpygui.dearpygui as imgui
 import dearpygui.demo as demo
@@ -8,10 +11,20 @@ import src.ui.application as app
 import src.ui.font_loader as fl
 import src.ui.theme as theme
 
+
+# ========= LOGGER ===================================================
+logger_format = '[{time} | {level:10}]: {message}'
+logger_format2 = '[<green>{time}</green> | {level:10}]: {message}'
+
+# logger.add(sys.stdout, colorize=True, format=logger_format2)
+# logger.add('./data/logs/json/debug.json', format=logger_format, rotation='1 MB', compression='zip', serialize=True)
+logger.add('./data/logs/debug.log', format=logger_format, rotation='1 MB', compression='zip')
+
+
 init_file = os.path.abspath('./data/imgui.ini')
 font_path = os.path.abspath('./resources/font/')
 
-# ========== CONFIG PROVIDER ===========================================
+# ========= CONFIG PROVIDER ==========================================
 SETTINGS_CONFIG_PATH = './resources'
 SETTINGS_CONFIG_NAME = 'settings'
 
@@ -26,6 +39,7 @@ def save_init():
     imgui.save_init_file(init_file)
 
 if __name__ == '__main__':
+    logger.info('Start App!')
     imgui.create_context()
 
     main_font, headline_font = fl.load(font_path)
@@ -53,3 +67,4 @@ if __name__ == '__main__':
     imgui.show_viewport()
     imgui.start_dearpygui()
     imgui.destroy_context()
+    logger.info('Stop App!')
