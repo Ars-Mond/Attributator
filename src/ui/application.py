@@ -32,7 +32,7 @@ class FIELD_ID:
     FILENAME = 'filename-id'
     TITLE = 'title-id'
     DESCRIPTION = 'description-id'
-    CATEGORY = 'category-id'
+    CATEGORIES = 'categories-id'
     RELEASE = 'release-id'
     KEYWORDS = 'keywords-id'
 
@@ -50,7 +50,7 @@ HEADLINE_FONT: int | str = ''
 
 # ========= DATA =====================================================
 currentDir = ''
-currentFile = ''
+currentFilePath = ''
 
 configFiles: list[dict] = []
 
@@ -121,7 +121,7 @@ def main_window():
                         imgui.add_input_text(label='Filename*', tag=FIELD_ID.FILENAME)
                         imgui.add_input_text(label='Title*', tag=FIELD_ID.TITLE)
                         imgui.add_input_text(label='Description*', tag=FIELD_ID.DESCRIPTION, multiline=True)
-                        imgui.add_input_text(label='Categories', tag=FIELD_ID.CATEGORY)
+                        imgui.add_input_text(label='Categories', tag=FIELD_ID.CATEGORIES)
                         imgui.add_input_text(label='Release Filename', tag=FIELD_ID.RELEASE)
                         imgui.add_input_text(label='Keywords*', tag=FIELD_ID.KEYWORDS, multiline=True, callback=wrap_input_text, on_enter=True)
 
@@ -129,9 +129,9 @@ def main_window():
 
                         with imgui.tree_node(label='Advanced'):
                             with imgui.group(horizontal=True):
-                                imgui.add_checkbox(label='Mature content')
-                                imgui.add_checkbox(label='Illustration')
-                                imgui.add_checkbox(label='Editorial')
+                                imgui.add_checkbox(label='Mature content', tag=FIELD_ID.MATURE_CONTENT)
+                                imgui.add_checkbox(label='Illustration', tag=FIELD_ID.ILLUSTRATION)
+                                imgui.add_checkbox(label='Editorial', tag=FIELD_ID.EDITORIAL)
 
                             imgui.add_spacer(height=2)
 
@@ -204,15 +204,21 @@ def _set_files_in_view():
             configFiles = files_config
 
 def _save_value(sender, app_data, user_data):
-    if not os.path.exists(currentFile):
+    if not os.path.exists(currentFilePath):
         return
 
     filename = imgui.get_value(FIELD_ID.FILENAME)
     title = imgui.get_value(FIELD_ID.TITLE)
     description = imgui.get_value(FIELD_ID.DESCRIPTION)
-    category = imgui.get_value(FIELD_ID.CATEGORY)
+    categories = imgui.get_value(FIELD_ID.CATEGORIES)
     release = imgui.get_value(FIELD_ID.RELEASE)
     keywords = imgui.get_value(FIELD_ID.KEYWORDS)
+
+    mature_content = imgui.get_value(FIELD_ID.MATURE_CONTENT)
+    illustration = imgui.get_value(FIELD_ID.ILLUSTRATION)
+    editorial = imgui.get_value(FIELD_ID.EDITORIAL)
+    price1 = imgui.get_value(FIELD_ID.PRICE_1)
+    price2 = imgui.get_value(FIELD_ID.PRICE_2)
 
     if not is_valid(filename):
         logger.warning('The "filename" field is not filled in.')
@@ -231,25 +237,29 @@ def _save_value(sender, app_data, user_data):
         _show_error("Field error", 'The "tags" field is not filled in.')
         return
 
-    file = {
-        'path': currentFile,
+    new_file_data = {
+        'path': currentFilePath,
         'filename': filename,
         'title': title,
         'description': description,
-        'category': category,
+        'categories': categories,
         'release_filename': release,
         'keywords': keywords,
-        'mature_content': False,
-        'illustration': False,
-        'editorial': False,
-        'price1': 0.0,
-        'price2': 0.0,
+        'mature_content': mature_content,
+        'illustration': illustration,
+        'editorial': editorial,
+        'price1': price1,
+        'price2': price2,
     }
 
-    print(file)
+
+    for file in configFiles:
+        if file.get('path') == currentFilePath:
+            configFiles.remove(file)
+            break
 
     # global configFiles
-    configFiles.append(file)
+    configFiles.append(new_file_data)
 
     ctrl.set_dir_config(currentDir, {'files': configFiles})
 
@@ -277,47 +287,54 @@ def _select_file(sender, app_data, user_data):
 
     _selection(user_data[0])
 
-    global currentFile
-    currentFile = user_data[1]
+    global currentFilePath
+    currentFilePath = user_data[1]
 
     file = select(configFiles, lambda item: item.get('path') == user_data[1])
+
     if file is not None:
         logger.info(f'File data found. {file.get('path')}')
 
-        filename = str(file.get('filename'))
-        title = str(file.get('title'))
-        description = str(file.get('description'))
-        category = str(file.get('category'))
-        release = str(file.get('release_filename'))
-        keywords = list(file.get('keywords'))
+        filename = cast_safe_get(file, 'filename', str)
+        title = cast_safe_get(file, 'title', str)
+        description = cast_safe_get(file, 'description', str)
+        categories = cast_safe_get(file, 'categories', str)
+        release = cast_safe_get(file, 'release', str)
+        keywords = cast_safe_get(file, 'keywords', str)
 
-        mature_content = bool(file.get('mature_content'))
-        illustration = bool(file.get('illustration'))
-        editorial = bool(file.get('editorial'))
-        price1 = float(file.get('price1'))
-        price2 = float(file.get('price2'))
+        mature_content = cast_safe_get(file, 'mature_content', bool)
+        illustration = cast_safe_get(file, 'illustration', bool)
+        editorial = cast_safe_get(file, 'editorial', bool)
+        price1 = cast_safe_get(file, 'price1', float)
+        price2 = cast_safe_get(file, 'price2', float)
 
-        imgui.set_value(FIELD_ID.FILENAME, filename)
-        imgui.set_value(FIELD_ID.TITLE, title)
-        imgui.set_value(FIELD_ID.DESCRIPTION, description)
-        imgui.set_value(FIELD_ID.CATEGORY, category)
-        imgui.set_value(FIELD_ID.RELEASE, release)
-        imgui.set_value(FIELD_ID.KEYWORDS, keywords)
+        if filename is not None: imgui.set_value(FIELD_ID.FILENAME, filename)
+        if title is not None: imgui.set_value(FIELD_ID.TITLE, title)
+        if description is not None: imgui.set_value(FIELD_ID.DESCRIPTION, description)
+        if categories is not None: imgui.set_value(FIELD_ID.CATEGORIES, categories)
+        if release is not None: imgui.set_value(FIELD_ID.RELEASE, release)
+        if keywords is not None: imgui.set_value(FIELD_ID.KEYWORDS, keywords)
 
-        imgui.set_value(FIELD_ID.MATURE_CONTENT, mature_content)
-        imgui.set_value(FIELD_ID.ILLUSTRATION, illustration)
-        imgui.set_value(FIELD_ID.EDITORIAL, editorial)
-        imgui.set_value(FIELD_ID.PRICE_1, price1)
-        imgui.set_value(FIELD_ID.PRICE_2, price2)
+        if mature_content is not None: imgui.set_value(FIELD_ID.MATURE_CONTENT, mature_content)
+        if illustration is not None: imgui.set_value(FIELD_ID.ILLUSTRATION, illustration)
+        if editorial is not None: imgui.set_value(FIELD_ID.EDITORIAL, editorial)
+        if price1 is not None: imgui.set_value(FIELD_ID.PRICE_1, price1)
+        if price2 is not None: imgui.set_value(FIELD_ID.PRICE_2, price2)
         return
 
 
     imgui.set_value(FIELD_ID.FILENAME, os.path.basename(user_data[1]))
     imgui.set_value(FIELD_ID.TITLE, '')
     imgui.set_value(FIELD_ID.DESCRIPTION, '')
-    imgui.set_value(FIELD_ID.CATEGORY, '')
+    imgui.set_value(FIELD_ID.CATEGORIES, '')
     imgui.set_value(FIELD_ID.RELEASE, '')
     imgui.set_value(FIELD_ID.KEYWORDS, '')
+
+    imgui.set_value(FIELD_ID.MATURE_CONTENT, False)
+    imgui.set_value(FIELD_ID.ILLUSTRATION, False)
+    imgui.set_value(FIELD_ID.EDITORIAL, False)
+    imgui.set_value(FIELD_ID.PRICE_1, 0.0)
+    imgui.set_value(FIELD_ID.PRICE_2, 0.0)
 
 
 # ========= UTILITIES ================================================
@@ -415,7 +432,7 @@ def select(collection: list[T], func: Callable[[T], bool]):
     return None
 
 def cast_safe_get(collection: dict, key: str, type: ClassType) -> ClassType | None:
-    if isinstance(collection, dict) or collection is None:
+    if not isinstance(collection, dict) or collection is None:
         return None
 
     value = collection.get(key)
