@@ -15,19 +15,19 @@ import src.ui.utilities as util
 import src.ui.font_loader as fl
 
 from src.core.deprecated import deprecated
+from src.ui.color import Color
 from src.config.config_provider import ConfigProvider
 
 
 # ========= DEFINE ===================================================
-g = '#ff00ff'
-
 file_types = ['jpg', 'png', 'mp4']
 
-MAIN_WINDOW_ID = 'main-window'
-ABOUT_ID = 'about-window'
-PREVIEW_WINDOW_ID = 'preview-window'
+MAIN_WINDOW_ID = 'main-window-id'
+SETTINGS_WINDOW_ID = 'settings-window-id'
+ABOUT_ID = 'about-window-id'
+PREVIEW_WINDOW_ID = 'preview-window-id'
 
-FILE_LIST_ID = 'file-list'
+FILE_LIST_ID = 'file-list-id'
 class FIELD_ID:
     FILENAME = 'filename-id'
     TITLE = 'title-id'
@@ -43,9 +43,16 @@ class FIELD_ID:
     PRICE_1 = 'price-1-id'
     PRICE_2 = 'price-2-id'
 
+class BUTTON_ID:
+    SET = 'set-button-id'
+    CLEAR = 'clear-button-id'
+    SAVE_PHOTO_METADATA = 'save-photo-metadata-button-id'
+
+class TEXTURE_ID:
+    CLOSE_BUTTON = 'close-texture-id'
 
 # ========= FONT =====================================================
-HEADLINE_FONT: int | str = ''
+HEADLINE_FONT_ID: int | str = ''
 
 
 # ========= DATA =====================================================
@@ -60,38 +67,38 @@ OLD_INPUT_TEXT_VALUE = ''
 
 
 # ========= WINDOWS ==================================================
-def init_window(*, headline_font: int | str):
-    global HEADLINE_FONT
-    HEADLINE_FONT = headline_font
+def init_window(*, headline_font: int | str) -> tuple[int | str]:
+    global HEADLINE_FONT_ID
+    HEADLINE_FONT_ID = headline_font
 
     mw = main_window()
     pw = preview_window()
+    sw = settings_window()
     aw = about_window()
 
     logger.info('Inited windows')
 
-    return [mw, aw, pw]
+    return mw, pw, sw, aw
 
 @logger.catch
 def main_window():
+    w_close_button, h_close_button, c_close_button, d_close_button = imgui.load_image(os.path.abspath('./data/images/close2.png'))
+
+    with imgui.texture_registry(show=False):
+        imgui.add_static_texture(width=w_close_button, height=h_close_button, default_value=d_close_button, tag=TEXTURE_ID.CLOSE_BUTTON)
+
     with imgui.window(label='Main', tag=MAIN_WINDOW_ID, show=True, no_close=True, no_collapse=True, min_size=[620, 480]) as window:
         with imgui.menu_bar():
             with imgui.menu(label="File"):
-                imgui.add_menu_item(label='Open...')
-                imgui.add_menu_item(label='Save')
-                imgui.add_menu_item(label='Save as...')
-
-                util.separate_spacer(heigth=10)
-
                 imgui.add_menu_item(label='Open directory...', callback=_set_files_in_view)
 
                 util.separate_spacer(heigth=10)
 
-                imgui.add_menu_item(label='Export...')
+                imgui.add_menu_item(label='Export...', enabled=False)
 
                 util.separate_spacer(heigth=10)
 
-                imgui.add_menu_item(label='Settings')
+                imgui.add_menu_item(label='Settings', callback=lambda: _show_window_center(SETTINGS_WINDOW_ID))
 
             with imgui.menu(label='Window'):
                 imgui.add_menu_item(label='Preview', callback=lambda: _show_window(PREVIEW_WINDOW_ID))
@@ -153,7 +160,8 @@ def main_window():
 
                         imgui.add_spacer(height=20)
 
-                        imgui.add_button(label="Save", width=-1)
+                        imgui.add_button(label="Save photo metadata", tag=BUTTON_ID.SAVE_PHOTO_METADATA, width=-1)
+
                         # imgui.add_button(label="Remove", width=-1)
 
     return window
@@ -175,10 +183,21 @@ def preview_window():
 
     return window
 
+def settings_window():
+    with imgui.window(label='Settings', tag=SETTINGS_WINDOW_ID, min_size=[640, 480], show=False, modal=True, no_collapse=True, no_close=True) as window:
+        imgui.add_text(default_value='Coming soon.')
+
+        with imgui.group(horizontal=True):
+            imgui.add_button(label="Save")
+            imgui.add_button(label="Cancel", callback=lambda: imgui.hide_item(SETTINGS_WINDOW_ID))
+        pass
+
+    return window
+
 def about_window():
-    with imgui.window(label='About', tag=ABOUT_ID, show=False, modal=True, no_title_bar=True) as window:
-        hl = imgui.add_text(default_value='Priver PIDOR')
-        imgui.bind_item_font(hl, HEADLINE_FONT)
+    with imgui.window(label='About', tag=ABOUT_ID, min_size=[640, 480], show=False, modal=True, no_title_bar=True) as window:
+        hl = imgui.add_text(default_value='Priver')
+        imgui.bind_item_font(hl, HEADLINE_FONT_ID)
         imgui.add_button(label='Close', callback=lambda: imgui.hide_item(ABOUT_ID))
 
     imgui.set_item_pos(window, [300, 300])
@@ -186,7 +205,12 @@ def about_window():
     return window
 
 def _set_files_in_view():
-    files, dir_path = ctrl.show_dialog(file_types)
+    alle = ctrl.show_dialog(file_types)
+    if alle is None:
+        return
+
+    files, dir_path = alle
+
     if files is not None:
         _render_file_view(files)
 
@@ -288,6 +312,10 @@ def _select_file(sender, app_data, user_data):
     _selection(user_data[0])
 
     global currentFilePath
+
+    if currentFilePath == user_data[1]:
+        return
+
     currentFilePath = user_data[1]
 
     file = select(configFiles, lambda item: item.get('path') == user_data[1])
@@ -340,6 +368,17 @@ def _select_file(sender, app_data, user_data):
 # ========= UTILITIES ================================================
 def _show_window(tag: int | str):
     imgui.show_item(tag)
+
+def _show_window_center(tag: int | str):
+    imgui.show_item(tag)
+
+    viewport_size = [imgui.get_viewport_width(), imgui.get_viewport_height()]
+    item_size = imgui.get_item_rect_size(tag)
+
+
+    pos = [int(viewport_size[0] / 2 - item_size[0] / 2), int(viewport_size[1] / 2 - item_size[1] / 2)]
+
+    imgui.set_item_pos(tag, pos)
 
 def _show_error(title: str, message: str):
     return xdialog.error(title, message)
@@ -441,6 +480,12 @@ def cast_safe_get(collection: dict, key: str, type: ClassType) -> ClassType | No
         return None
 
     return type(value)
+
+# imgui.add_menu_item(label='Open...')
+# imgui.add_menu_item(label='Save')
+# imgui.add_menu_item(label='Save as...')
+#
+# util.separate_spacer(heigth=10)
 
 
 # path = str(file.get('path'))

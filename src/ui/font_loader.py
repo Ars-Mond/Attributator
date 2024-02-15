@@ -19,13 +19,4 @@ def load(font_path: str):
         # main = imgui.add_font("./Resources/Font/Poppins-Medium.ttf", 18)
         # footnote = imgui.add_font("./Resources/Font/Poppins-Medium.ttf", 14)
 
-    global MAIN_FONT
-    MAIN_FONT = main_font
-
-    global HEADLINE_FONT
-    HEADLINE_FONT = HEADLINE_FONT
-
     return main_font, headline_font
-
-def get_headline():
-    return HEADLINE_FONT

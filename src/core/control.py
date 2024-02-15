@@ -10,7 +10,8 @@ from src.config.config_provider import ConfigProvider
 
 cp = ConfigProvider('', '')
 
-def show_dialog(file_types: list[str]) -> list[str] | None:
+
+def show_dialog(file_types: list[str]) -> dict[str] | None:
     dir_path = xdialog.directory()
 
     if dir_path is not None and os.path.exists(dir_path):
