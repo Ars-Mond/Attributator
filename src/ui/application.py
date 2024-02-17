@@ -1,8 +1,7 @@
 import os
-from typing import Callable, TypeVar
-
-T = TypeVar('T')
-ClassType = TypeVar('ClassType')
+import re
+import time
+import pyperclip
 
 import xdialog
 from loguru import logger
@@ -14,9 +13,14 @@ import src.core.control as ctrl
 import src.ui.utilities as util
 import src.ui.font_loader as fl
 
-from src.core.deprecated import deprecated
 from src.ui.color import Color
+from src.core.deprecated import deprecated
 from src.config.config_provider import ConfigProvider
+
+from typing import Callable, TypeVar
+
+T = TypeVar('T')
+ClassType = TypeVar('ClassType')
 
 
 # ========= DEFINE ===================================================
@@ -35,6 +39,10 @@ class FIELD_ID:
     CATEGORIES = 'categories-id'
     RELEASE = 'release-id'
     KEYWORDS = 'keywords-id'
+    KEYWORDS_INPUT = 'keywords-input-id'
+    KEYWORDS_ADD = 'keywords-add-id'
+    KEYWORDS_REMOVE = 'keywords-remove-id'
+    KEYWORDS_COPY = 'keywords-copy-id'
 
     MATURE_CONTENT = 'mature-id'
     ILLUSTRATION = 'illustration-id'
@@ -56,10 +64,12 @@ HEADLINE_FONT_ID: int | str = ''
 
 
 # ========= DATA =====================================================
-currentDir = ''
-currentFilePath = ''
+CurrentDir = ''
+CurrentFilePath = ''
+CurrentKeywords: list[dict] = []
 
-configFiles: list[dict] = []
+CurrentConfigFiles: list[dict] = []
+
 
 
 # ========= TEST =====================================================
@@ -71,6 +81,8 @@ def init_window(*, headline_font: int | str) -> tuple[int | str]:
     global HEADLINE_FONT_ID
     HEADLINE_FONT_ID = headline_font
 
+    _theme_init()
+
     mw = main_window()
     pw = preview_window()
     sw = settings_window()
@@ -79,6 +91,15 @@ def init_window(*, headline_font: int | str) -> tuple[int | str]:
     logger.info('Inited windows')
 
     return mw, pw, sw, aw
+
+def _theme_init():
+    c = Color('#0d0')
+    print(c.get_RGBA())
+
+    with imgui.theme(tag='__ok_feel'):
+        with imgui.theme_component(imgui.mvButton):
+            imgui.add_theme_color(imgui.mvThemeCol_Button, c.get_RGBA())
+
 
 @logger.catch
 def main_window():
@@ -90,7 +111,7 @@ def main_window():
     with imgui.window(label='Main', tag=MAIN_WINDOW_ID, show=True, no_close=True, no_collapse=True, min_size=[620, 480]) as window:
         with imgui.menu_bar():
             with imgui.menu(label="File"):
-                imgui.add_menu_item(label='Open directory...', callback=_set_files_in_view)
+                imgui.add_menu_item(label='Open directory...', callback=_show_directiry_dialog)
 
                 util.separate_spacer(heigth=10)
 
@@ -122,15 +143,31 @@ def main_window():
 
                     imgui.add_spacer(height=5)
 
-                with imgui.table_cell():
+                with imgui.table_cell() as cell:
                     imgui.add_text(default_value="Tools")
                     with imgui.child_window(height=-15):
-                        imgui.add_input_text(label='Filename*', tag=FIELD_ID.FILENAME)
-                        imgui.add_input_text(label='Title*', tag=FIELD_ID.TITLE)
-                        imgui.add_input_text(label='Description*', tag=FIELD_ID.DESCRIPTION, multiline=True)
-                        imgui.add_input_text(label='Categories', tag=FIELD_ID.CATEGORIES)
-                        imgui.add_input_text(label='Release Filename', tag=FIELD_ID.RELEASE)
-                        imgui.add_input_text(label='Keywords*', tag=FIELD_ID.KEYWORDS, multiline=True, callback=wrap_input_text, on_enter=True)
+                        imgui.add_input_text(label='Filename*', tag=FIELD_ID.FILENAME, width=-200)
+                        imgui.add_input_text(label='Title*', tag=FIELD_ID.TITLE, width=-200)
+                        imgui.add_input_text(label='Description*', tag=FIELD_ID.DESCRIPTION, multiline=True, width=-200)
+                        imgui.add_input_text(label='Categories', tag=FIELD_ID.CATEGORIES, width=-200)
+                        _help_last('Categories.')
+                        imgui.add_input_text(label='Release filename', tag=FIELD_ID.RELEASE, width=-200)
+                        _help_last('Release filename.')
+
+                        imgui.add_spacer(height=2)
+                        imgui.add_separator()
+
+                        imgui.add_text(default_value='Keywords:')
+                        with imgui.group(horizontal=True):
+                            imgui.add_input_text(tag=FIELD_ID.KEYWORDS_INPUT, width=-200)
+                            imgui.add_button(label='Add', tag=FIELD_ID.KEYWORDS_ADD, callback=_add_keywords_button)
+                            imgui.add_button(label='Remove', tag=FIELD_ID.KEYWORDS_REMOVE, callback=_remove_keywords_button)
+                            imgui.add_button(label='Copy All', tag=FIELD_ID.KEYWORDS_COPY, callback=_copy_keywords_button)
+
+                        with imgui.child_window(height=200):
+                            imgui.add_text(label='Keywords*:', tag=FIELD_ID.KEYWORDS, wrap=0)
+
+                        imgui.add_separator()
 
                         imgui.add_spacer(height=1)
 
@@ -155,14 +192,12 @@ def main_window():
                         imgui.add_separator()
                         imgui.add_spacer(height=10)
 
-                        imgui.add_button(label="Set", width=-1, callback=_save_value)
-                        imgui.add_button(label="Clear", width=-1)
+                        imgui.add_button(label="Save", width=-1, callback=_save_button)
+                        imgui.add_button(label="Clear", width=-1, callback=_clear_button)
 
                         imgui.add_spacer(height=20)
 
                         imgui.add_button(label="Save photo metadata", tag=BUTTON_ID.SAVE_PHOTO_METADATA, width=-1)
-
-                        # imgui.add_button(label="Remove", width=-1)
 
     return window
 
@@ -204,31 +239,56 @@ def about_window():
 
     return window
 
-def _set_files_in_view():
-    alle = ctrl.show_dialog(file_types)
-    if alle is None:
+def _add_keywords_button(sender, app_data, user_data):
+    if not os.path.exists(CurrentFilePath):
         return
 
-    files, dir_path = alle
+    s: str = imgui.get_value(FIELD_ID.KEYWORDS_INPUT)
+    if len(s) <= 0: return
 
-    if files is not None:
-        _render_file_view(files)
+    keywords = get_items(s)
 
-        global currentDir
-        currentDir = dir_path
+    for keyword in keywords:
+        if not keyword in CurrentKeywords:
+            CurrentKeywords.append(keyword)
+    CurrentKeywords.sort()
 
-        f = ctrl.get_dir_config(dir_path)
+    logger.info(f'Try add keyword(s): {keywords}')
+    logger.debug(f'Current keywords: {CurrentKeywords}')
 
-        if f is None:
-            return
+    imgui.set_value(FIELD_ID.KEYWORDS_INPUT, '')
+    imgui.set_value(FIELD_ID.KEYWORDS, ', '.join(CurrentKeywords))
 
-        files_config = dict.get(f, 'files')
-        if files_config is not None:
-            global configFiles
-            configFiles = files_config
+    _click_feel(sender, 0.2)
 
-def _save_value(sender, app_data, user_data):
-    if not os.path.exists(currentFilePath):
+def _remove_keywords_button(sender, app_data, user_data):
+    s: str = imgui.get_value(FIELD_ID.KEYWORDS_INPUT)
+    if len(s) <= 0: return
+
+    keywords = get_items(s)
+
+    for keyword in keywords:
+        if keyword in CurrentKeywords:
+            CurrentKeywords.remove(keyword)
+    CurrentKeywords.sort()
+
+    logger.info(f'Try remove keyword(s): {keywords}')
+    logger.debug(f'Current keywords: {CurrentKeywords}')
+
+    imgui.set_value(FIELD_ID.KEYWORDS_INPUT, '')
+    imgui.set_value(FIELD_ID.KEYWORDS, ', '.join(CurrentKeywords))
+
+    _click_feel(sender, 0.2)
+
+def _copy_keywords_button(sender, app_data, user_data):
+    if CurrentKeywords is not None and len(CurrentKeywords) > 0:
+        text = ', '.join(CurrentKeywords)
+        pyperclip.copy(text)
+        logger.debug(f'Copy text to clipboard: {text}')
+        _click_feel(sender, 0.5)
+
+def _save_button(sender, app_data, user_data):
+    if not os.path.exists(CurrentFilePath):
         return
 
     filename = imgui.get_value(FIELD_ID.FILENAME)
@@ -236,7 +296,7 @@ def _save_value(sender, app_data, user_data):
     description = imgui.get_value(FIELD_ID.DESCRIPTION)
     categories = imgui.get_value(FIELD_ID.CATEGORIES)
     release = imgui.get_value(FIELD_ID.RELEASE)
-    keywords = imgui.get_value(FIELD_ID.KEYWORDS)
+    keywords = CurrentKeywords  # keywords = imgui.get_value(FIELD_ID.KEYWORDS)
 
     mature_content = imgui.get_value(FIELD_ID.MATURE_CONTENT)
     illustration = imgui.get_value(FIELD_ID.ILLUSTRATION)
@@ -257,12 +317,12 @@ def _save_value(sender, app_data, user_data):
         _show_error("Field error", 'The "description" field is not filled in.')
         return
     if not is_valid(keywords):
-        logger.warning('The "tags" field is not filled in.')
-        _show_error("Field error", 'The "tags" field is not filled in.')
+        logger.warning('The "keyword(s)" field is not filled in.')
+        _show_error("Field error", 'The "keywords" field is not filled in.')
         return
 
     new_file_data = {
-        'path': currentFilePath,
+        'path': CurrentFilePath,
         'filename': filename,
         'title': title,
         'description': description,
@@ -276,16 +336,80 @@ def _save_value(sender, app_data, user_data):
         'price2': price2,
     }
 
-
-    for file in configFiles:
-        if file.get('path') == currentFilePath:
-            configFiles.remove(file)
+    for file in CurrentConfigFiles:
+        if file.get('path') == CurrentFilePath:
+            CurrentConfigFiles.remove(file)
+            logger.info(f'Save data: {file}')
             break
 
     # global configFiles
-    configFiles.append(new_file_data)
+    CurrentConfigFiles.append(new_file_data)
 
-    ctrl.set_dir_config(currentDir, {'files': configFiles})
+    ctrl.set_dir_config(CurrentDir, {'files': CurrentConfigFiles})
+
+    _click_feel(sender, 0.2)
+
+def _clear_button(sender, app_data, user_data):
+    if not os.path.exists(CurrentFilePath):
+        return
+
+    imgui.set_value(FIELD_ID.TITLE, '')
+    imgui.set_value(FIELD_ID.DESCRIPTION, '')
+    imgui.set_value(FIELD_ID.CATEGORIES, '')
+    imgui.set_value(FIELD_ID.RELEASE, '')
+    imgui.set_value(FIELD_ID.KEYWORDS, '')
+
+    imgui.set_value(FIELD_ID.MATURE_CONTENT, False)
+    imgui.set_value(FIELD_ID.ILLUSTRATION, False)
+    imgui.set_value(FIELD_ID.EDITORIAL, False)
+    imgui.set_value(FIELD_ID.PRICE_1, 0.0)
+    imgui.set_value(FIELD_ID.PRICE_2, 0.0)
+
+    global CurrentKeywords
+    CurrentKeywords = []
+
+    for file in CurrentConfigFiles:
+        if file.get('path') == CurrentFilePath:
+            CurrentConfigFiles.remove(file)
+            logger.info(f'Clear data: {file}')
+            break
+
+    ctrl.set_dir_config(CurrentDir, {'files': CurrentConfigFiles})
+
+    _click_feel(sender, 0.2)
+
+def _show_directiry_dialog():
+    alle = ctrl.show_dialog(file_types)
+    if alle is None:
+        _hide_files_list()
+        _show_error('Directory', 'Directory is none!')
+        return
+
+    _show_files_list(alle[0], alle[1])
+
+def _show_files_list(files, dir_path):
+    if files is not None:
+        _render_file_view(files)
+
+        global CurrentDir
+        CurrentDir = dir_path
+
+        f = ctrl.get_dir_config(dir_path)
+
+        if f is None:
+            return
+
+        files_config = dict.get(f, 'files')
+        if files_config is not None:
+            global CurrentConfigFiles
+            CurrentConfigFiles = files_config
+
+def _hide_files_list():
+
+    _render_file_view([])
+
+    global CurrentDir
+    CurrentDir = ''
 
 def _render_file_view(files: list[str]):
     children = imgui.get_item_children(FILE_LIST_ID)
@@ -301,7 +425,6 @@ def _render_file_view(files: list[str]):
         seletion = imgui.add_selectable(label=os.path.basename(file), parent=FILE_LIST_ID, callback=_select_file, user_data=[items, file])
         items.append(seletion)
 
-
 def _select_file(sender, app_data, user_data):
     logger.debug(f'{sender} | {app_data} | {user_data}')
     def _selection(items):
@@ -311,14 +434,17 @@ def _select_file(sender, app_data, user_data):
 
     _selection(user_data[0])
 
-    global currentFilePath
+    global CurrentFilePath
 
-    if currentFilePath == user_data[1]:
+    if CurrentFilePath == user_data[1]:
         return
 
-    currentFilePath = user_data[1]
+    CurrentFilePath = user_data[1]
 
-    file = select(configFiles, lambda item: item.get('path') == user_data[1])
+    global CurrentKeywords
+    CurrentKeywords = []
+
+    file = select(CurrentConfigFiles, lambda item: item.get('path') == user_data[1])
 
     if file is not None:
         logger.info(f'File data found. {file.get('path')}')
@@ -328,7 +454,7 @@ def _select_file(sender, app_data, user_data):
         description = cast_safe_get(file, 'description', str)
         categories = cast_safe_get(file, 'categories', str)
         release = cast_safe_get(file, 'release', str)
-        keywords = cast_safe_get(file, 'keywords', str)
+        keywords = cast_safe_get(file, 'keywords', list)
 
         mature_content = cast_safe_get(file, 'mature_content', bool)
         illustration = cast_safe_get(file, 'illustration', bool)
@@ -341,13 +467,15 @@ def _select_file(sender, app_data, user_data):
         if description is not None: imgui.set_value(FIELD_ID.DESCRIPTION, description)
         if categories is not None: imgui.set_value(FIELD_ID.CATEGORIES, categories)
         if release is not None: imgui.set_value(FIELD_ID.RELEASE, release)
-        if keywords is not None: imgui.set_value(FIELD_ID.KEYWORDS, keywords)
+        if keywords is not None: imgui.set_value(FIELD_ID.KEYWORDS, ', '.join(keywords))
 
         if mature_content is not None: imgui.set_value(FIELD_ID.MATURE_CONTENT, mature_content)
         if illustration is not None: imgui.set_value(FIELD_ID.ILLUSTRATION, illustration)
         if editorial is not None: imgui.set_value(FIELD_ID.EDITORIAL, editorial)
         if price1 is not None: imgui.set_value(FIELD_ID.PRICE_1, price1)
         if price2 is not None: imgui.set_value(FIELD_ID.PRICE_2, price2)
+
+        CurrentKeywords = keywords
         return
 
 
@@ -365,7 +493,11 @@ def _select_file(sender, app_data, user_data):
     imgui.set_value(FIELD_ID.PRICE_2, 0.0)
 
 
+
 # ========= UTILITIES ================================================
+
+def _log(sender, app_data, user_data):
+    logger.debug(f'{sender} | {app_data} | {user_data}')
 def _show_window(tag: int | str):
     imgui.show_item(tag)
 
@@ -392,52 +524,19 @@ def _help(tag: int | str, message: str | list[str], join_str: str = '\n'):
     if isinstance(message, list):
         temp_message = join_str.join(message)
 
-    group = imgui.add_group(horizontal=True)
+    parent = imgui.get_item_parent(tag)
+    group = imgui.add_group(horizontal=True, parent=parent)
     imgui.move_item(tag, parent=group)
     imgui.capture_next_item(lambda s: imgui.move_item(s, parent=group))
     t = imgui.add_text("(?)", color=[0, 255, 0])
     with imgui.tooltip(t):
         imgui.add_text(temp_message)
 
-def wrap_input_text(sender, app_data: str, user_data):
-    global OLD_INPUT_TEXT_VALUE
+def _click_feel(tag: int | str, delta: float):
+    imgui.bind_item_theme(tag, '__ok_feel')
+    time.sleep(delta)
+    imgui.bind_item_theme(tag, 0)
 
-    if app_data == OLD_INPUT_TEXT_VALUE:
-        return
-
-
-    size_text_box = imgui.get_item_rect_size(sender)
-    print(size_text_box)
-    print(imgui.get_text_size(app_data, wrap_width=size_text_box[0]))
-    print(app_data)
-    print('==============')
-
-    ts = app_data.replace('\n', '').split(',')
-
-    ts_new = []
-
-    max_str_count = int(size_text_box[0] / 5) - 10
-
-    out = ''
-    out_list = []
-
-    for t in ts:
-        if len(t) <= 0: continue
-
-        r = t.strip(' ')
-        ts_new.append(r)
-        if len(out + r + ', ') <= max_str_count:
-            out += r + ', '
-        else:
-            out_list.append(out)
-            out = ''
-
-    out_list.append(out)
-
-    l = '\n'.join(out_list)
-    imgui.set_value(sender, l)
-
-    OLD_INPUT_TEXT_VALUE = l
 
 
 # ========= DEPRECATED ===============================================
@@ -462,7 +561,7 @@ def primary_window():
 
 
 # ========= OTHER ====================================================
-def is_valid(value: str) -> bool:
+def is_valid(value: str | list) -> bool:
     return value is not None and len(value) > 0
 def select(collection: list[T], func: Callable[[T], bool]):
     for item in collection:
@@ -481,6 +580,23 @@ def cast_safe_get(collection: dict, key: str, type: ClassType) -> ClassType | No
 
     return type(value)
 
+def get_items(value: str,*, split_char: str = ',', clerar_chars: str = ' ', is_lower: bool = True) -> list[str]:
+    value = value.replace('\n', ' ').replace('\t', ' ')
+    value = re.sub('\\s{2,}', ' ', value)
+    temp_values = value.split(split_char)
+    collection: list[str] = []
+
+    for temp_value in temp_values:
+        temp_value = temp_value.strip(clerar_chars)
+
+        if is_lower:
+            temp_value = temp_value.lower()
+
+        if len(temp_value) > 0:
+            collection.append(temp_value)
+
+    return collection
+
 # imgui.add_menu_item(label='Open...')
 # imgui.add_menu_item(label='Save')
 # imgui.add_menu_item(label='Save as...')
@@ -490,3 +606,20 @@ def cast_safe_get(collection: dict, key: str, type: ClassType) -> ClassType | No
 
 # path = str(file.get('path'))
 # imgui.add_button(label=os.path.basename(file), parent=FILE_LIST_TAG, callback=select_file, user_data=file)
+
+#     with imgui.theme(tag='__test'):
+#         with imgui.theme_component(imgui.mvText):
+#             c = Color('#ada')
+#             print(c.get_RGBA())
+#             imgui.add_theme_color(imgui.mvThemeCol_Text, c.get_RGBA())
+
+# imgui.bind_item_theme(g, '__test')
+
+
+# with imgui.group(horizontal=True):
+#     for i in range(20):
+#         with imgui.group(horizontal=True) as group:
+#             imgui.add_text(default_value=f'item {i}')
+#             imgui.add_image_button(TEXTURE_ID.CLOSE_BUTTON, width=6, height=6)
+
+# imgui.add_input_text(label='Keywords*', tag=FIELD_ID.KEYWORDS, multiline=True, callback=wrap_input_text, on_enter=True)
