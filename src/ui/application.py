@@ -115,17 +115,17 @@ def main_window():
 
                 util.separate_spacer(heigth=10)
 
-                imgui.add_menu_item(label='Settings', callback=lambda: _show_window_center(SETTINGS_WINDOW_ID))
+                imgui.add_menu_item(label='Settings', enabled=False, callback=lambda: _show_window_center(SETTINGS_WINDOW_ID))
 
             with imgui.menu(label='Window'):
-                imgui.add_menu_item(label='Preview', callback=lambda: _show_window(PREVIEW_WINDOW_ID))
-                imgui.add_menu_item(label='Tag Manager')
-                imgui.add_menu_item(label='Demo', callback=demo.show_demo)
-                imgui.add_menu_item(label='Dialog')
+                imgui.add_menu_item(label='Preview', enabled=False, callback=lambda: _show_window(PREVIEW_WINDOW_ID))
+                imgui.add_menu_item(label='Tag Manager', enabled=False)
+                imgui.add_menu_item(label='Demo', enabled=False, callback=demo.show_demo)
+                imgui.add_menu_item(label='Dialog', enabled=False)
 
             with imgui.menu(label='Help'):
-                imgui.add_menu_item(label='Docs', callback=lambda: xdialog.info('Звоните Сене!', 'Что то сломалось!? Звони Адмэну! тел: 8 800 333-35-35.'))
-                imgui.add_menu_item(label='About...', callback=lambda: _show_window(ABOUT_ID))
+                imgui.add_menu_item(label='Docs', enabled=False, callback=lambda: xdialog.info('Звоните Сене!', 'Что то сломалось!? Звони Адмэну! тел: 8 800 333-35-35.'))
+                imgui.add_menu_item(label='About...', enabled=False, callback=lambda: _show_window(ABOUT_ID))
 
         with imgui.table(header_row=False, borders_outerH=False, borders_outerV=False, resizable=True):
             imgui.add_table_column()

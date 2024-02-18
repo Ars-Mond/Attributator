@@ -11,6 +11,8 @@ import src.ui.application as app
 import src.ui.font_loader as fl
 import src.ui.theme as theme
 
+RESOURCE_PATH = os.path.abspath('./resources')
+IMAGES_PATH = os.path.join(RESOURCE_PATH, './images')
 
 # ========= LOGGER ===================================================
 logger_format = '[{time} | {level:10}]: {message}'
@@ -20,13 +22,13 @@ logger.add('./data/logs/debug.log', format=logger_format, rotation='1 MB', compr
 
 
 init_file = os.path.abspath('./data/imgui.ini')
-font_path = os.path.abspath('./resources/font/')
+font_path = os.path.join(RESOURCE_PATH, './font/')
 
 # ========= CONFIG PROVIDER ==========================================
-SETTINGS_CONFIG_PATH = './resources'
+SETTINGS_CONFIG_PATH = RESOURCE_PATH
 SETTINGS_CONFIG_NAME = 'settings'
 
-TAGS_CONFIG_PATH = './resources'
+TAGS_CONFIG_PATH = RESOURCE_PATH
 TAGS_CONFIG_NAME = 'tags'
 
 settings = ConfigProvider(path_file=SETTINGS_CONFIG_PATH, name_file=SETTINGS_CONFIG_NAME)
@@ -56,6 +58,8 @@ if __name__ == '__main__':
         # imgui.bind_theme(global_theme)
         imgui.configure_app(docking=True, docking_space=True, init_file=init_file)
         imgui.create_viewport(title='Attributator')
+        imgui.set_viewport_small_icon(os.path.join(IMAGES_PATH, 'icon.ico'))
+        imgui.set_viewport_large_icon(os.path.join(IMAGES_PATH, 'icon.png'))
         imgui.setup_dearpygui()
 
         imgui.set_exit_callback(callback=lambda: save_init())
