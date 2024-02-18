@@ -242,6 +242,8 @@ def _add_keywords_button(sender, app_data, user_data):
     s: str = imgui.get_value(FIELD_ID.KEYWORDS_INPUT)
     if len(s) <= 0: return
 
+    s = s.encode('cp1252').decode('cp1251')
+
     keywords = ctrl.get_items_format(s)
 
     for keyword in keywords:

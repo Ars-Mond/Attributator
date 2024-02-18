@@ -99,8 +99,8 @@ def cast_safe_get(collection: dict, key: str, type: ClassType) -> ClassType | No
 
 def get_items_format(value: str, *, split_char: str = ',', clerar_chars: str = ' ', is_lower: bool = True) -> list[str]:
     value = value.replace('\n', ' ').replace('\t', ' ')
+    value = re.sub(r'[^A-Za-z\s]*', '', value) # r'[.*\[\]{}!?@#$%^&()_+\-=|\\/><\"\'1234567890:;№]+'
     value = re.sub('\\s{2,}', ' ', value)
-    value = re.sub(r'[.*\[\]{}!?@#$%^&()_+\-=|\\/><\"\'1234567890:;№]+', '', value)
     temp_values = value.split(split_char)
     collection: list[str] = []
 
