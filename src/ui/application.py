@@ -18,7 +18,12 @@ from src.config.config_provider import ConfigProvider
 
 
 # ========= DEFINE ===================================================
-file_types = ['jpg', 'png', 'mp4']
+image_file_types = ['jpg', 'png']
+video_file_types = ['mp4']
+
+file_types = []
+file_types.extend(image_file_types)
+file_types.extend(video_file_types)
 
 MAIN_WINDOW_ID = 'main-window-id'
 SETTINGS_WINDOW_ID = 'settings-window-id'
@@ -99,11 +104,6 @@ def _theme_init():
 
 @logger.catch
 def main_window():
-    w_close_button, h_close_button, c_close_button, d_close_button = imgui.load_image(os.path.abspath('./data/images/close2.png'))
-
-    with imgui.texture_registry(show=False):
-        imgui.add_static_texture(width=w_close_button, height=h_close_button, default_value=d_close_button, tag=TEXTURE_ID.CLOSE_BUTTON)
-
     with imgui.window(label='Main', tag=MAIN_WINDOW_ID, show=True, no_close=True, no_collapse=True, min_size=[620, 480]) as window:
         with imgui.menu_bar():
             with imgui.menu(label="File"):
@@ -111,7 +111,7 @@ def main_window():
 
                 util.separate_spacer(heigth=10)
 
-                imgui.add_menu_item(label='Export...', enabled=False)
+                imgui.add_menu_item(label='Export...', callback=_export_button)
 
                 util.separate_spacer(heigth=10)
 
@@ -236,7 +236,7 @@ def about_window():
     return window
 
 def _add_keywords_button(sender, app_data, user_data):
-    if not os.path.exists(CurrentFilePath):
+    if _check_can_edit():
         return
 
     s: str = imgui.get_value(FIELD_ID.KEYWORDS_INPUT)
@@ -260,8 +260,12 @@ def _add_keywords_button(sender, app_data, user_data):
     _click_feel(sender, 0.2)
 
 def _remove_keywords_button(sender, app_data, user_data):
+    if _check_can_edit():
+        return
+
     s: str = imgui.get_value(FIELD_ID.KEYWORDS_INPUT)
-    if len(s) <= 0: return
+    if len(s) <= 0:
+        return
 
     keywords = ctrl.get_items_format(s)
 
@@ -279,6 +283,9 @@ def _remove_keywords_button(sender, app_data, user_data):
     _click_feel(sender, 0.2)
 
 def _copy_keywords_button(sender, app_data, user_data):
+    if _check_can_edit():
+        return
+
     if CurrentKeywords is not None and len(CurrentKeywords) > 0:
         text = ', '.join(CurrentKeywords)
         pyperclip.copy(text)
@@ -286,7 +293,7 @@ def _copy_keywords_button(sender, app_data, user_data):
         _click_feel(sender, 0.5)
 
 def _save_button(sender, app_data, user_data):
-    if not os.path.exists(CurrentFilePath):
+    if _check_can_edit():
         return
 
     filename, title, description, categories, release, keywords, mature_content, illustration, editorial, price1, price2 = _get_attributes_view()
@@ -337,7 +344,7 @@ def _save_button(sender, app_data, user_data):
     _click_feel(sender, 0.7)
 
 def _clear_button(sender, app_data, user_data):
-    if not os.path.exists(CurrentFilePath):
+    if _check_can_edit():
         return
 
     imgui.set_value(FIELD_ID.TITLE, '')
@@ -490,6 +497,30 @@ def _select_file(sender, app_data, user_data):
     imgui.set_value(FIELD_ID.PRICE_1, 0.0)
     imgui.set_value(FIELD_ID.PRICE_2, 0.0)
 
+def _export_button(sender, app_data, user_data):
+    if _check_can_edit(False):
+        return
+
+    path = xdialog.directory('Select a folder to save...')
+    if path is None or not os.path.exists(path):
+        return
+
+    data = ctrl.get_dir_config(CurrentDir)
+
+    datas: list[ctrl.FileData] = ctrl.FileData.create_many_from_files(data)
+
+    new_datas = []
+    for data in datas:
+        if data.filename.split('.')[1] in video_file_types:
+            new_datas.append(data)
+
+    if len(new_datas) <= 0:
+        xdialog.info('Data(s) doesn\'t exist', 'Video file(s) data(s) doesn\'t exist.')
+        return
+
+    ctrl.export_csv(path, datas, True)
+
+
 
 # ========= UTILITIES ================================================
 
@@ -580,6 +611,13 @@ def _click_feel(tag: int | str, delta: float):
     time.sleep(delta)
     imgui.bind_item_theme(tag, 0)
 
+def _check_can_edit(is_all_context: bool = True) -> bool:
+    b = not os.path.exists(CurrentDir) or not os.path.exists(CurrentFilePath)
+    if not is_all_context:
+        b = not os.path.exists(CurrentDir)
+    if b:
+        xdialog.warning('Context doesn\'t exist', 'The working context is not selected or does not exist!')
+    return b
 
 # ========= DEPRECATED ===============================================
 @deprecated
@@ -603,6 +641,11 @@ def primary_window():
 
 
 # ========= OTHER ====================================================
+
+# w_close_button, h_close_button, c_close_button, d_close_button = imgui.load_image(os.path.abspath('./data/images/close2.png'))
+#
+#     with imgui.texture_registry(show=False):
+#         imgui.add_static_texture(width=w_close_button, height=h_close_button, default_value=d_close_button, tag=TEXTURE_ID.CLOSE_BUTTON)
 
 
 # imgui.add_menu_item(label='Open...')
@@ -631,3 +674,9 @@ def primary_window():
 #             imgui.add_image_button(TEXTURE_ID.CLOSE_BUTTON, width=6, height=6)
 
 # imgui.add_input_text(label='Keywords*', tag=FIELD_ID.KEYWORDS, multiline=True, callback=wrap_input_text, on_enter=True)
+
+
+# datas: list[ctrl.FileData] = ctrl.FileData.create_many(data)
+
+# data = data.get('files')
+# logger.debug(data)
