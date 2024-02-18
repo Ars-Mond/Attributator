@@ -1,10 +1,16 @@
 import os
+import re
 import xdialog
 
 from schema import Schema, And, Use, Optional, SchemaError
 
 import dearpygui.dearpygui as imgui
 import dearpygui.demo as demo
+
+from typing import Callable, TypeVar
+
+T = TypeVar('T')
+ClassType = TypeVar('ClassType')
 
 from src.config.config_provider import ConfigProvider
 
@@ -70,6 +76,50 @@ dir_config_signature = Schema({
         }
     ]
 })
+
+
+def is_valid(value: str | list) -> bool:
+    return value is not None and len(value) > 0
+def select(collection: list[T], func: Callable[[T], bool]):
+    for item in collection:
+        if func(item):
+            return item
+    return None
+
+def cast_safe_get(collection: dict, key: str, type: ClassType) -> ClassType | None:
+    if not isinstance(collection, dict) or collection is None:
+        return None
+
+    value = collection.get(key)
+
+    if value is None:
+        return None
+
+    return type(value)
+
+def get_items_format(value: str, *, split_char: str = ',', clerar_chars: str = ' ', is_lower: bool = True) -> list[str]:
+    value = value.replace('\n', ' ').replace('\t', ' ')
+    value = re.sub('\\s{2,}', ' ', value)
+    value = re.sub(r'[.*\[\]{}!?@#$%^&()_+\-=|\\/><\"\'1234567890:;№]+', '', value)
+    temp_values = value.split(split_char)
+    collection: list[str] = []
+
+    for temp_value in temp_values:
+        temp_value = temp_value.strip(clerar_chars)
+
+        if is_lower:
+            temp_value = temp_value.lower()
+
+        if len(temp_value) > 0:
+            collection.append(temp_value)
+
+    return collection
+
+
+
+
+
+
 
 
 # dir_config_signature = Schema({

@@ -19,7 +19,7 @@ class Color:
                 self._hex = r + g + b + a
 
             elif len(hex_value) <= 6:
-                self._hex = int(hex_value, 16) << 8 + 0xff
+                self._hex = (int(hex_value, 16) << 8) + 0xff
             elif len(hex_value) <= 8:
                 self._hex = int(hex_value, 16)
             else:

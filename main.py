@@ -16,8 +16,6 @@ import src.ui.theme as theme
 logger_format = '[{time} | {level:10}]: {message}'
 logger_format2 = '[<green>{time}</green> | {level:10}]: {message}'
 
-# logger.add(sys.stdout, colorize=True, format=logger_format2)
-# logger.add('./data/logs/json/debug.json', format=logger_format, rotation='1 MB', compression='zip', serialize=True)
 logger.add('./data/logs/debug.log', format=logger_format, rotation='1 MB', compression='zip')
 
 

@@ -1,5 +1,4 @@
 import os
-import re
 import time
 import pyperclip
 
@@ -16,11 +15,6 @@ import src.ui.font_loader as fl
 from src.ui.color import Color
 from src.core.deprecated import deprecated
 from src.config.config_provider import ConfigProvider
-
-from typing import Callable, TypeVar
-
-T = TypeVar('T')
-ClassType = TypeVar('ClassType')
 
 
 # ========= DEFINE ===================================================
@@ -66,7 +60,7 @@ HEADLINE_FONT_ID: int | str = ''
 # ========= DATA =====================================================
 CurrentDir = ''
 CurrentFilePath = ''
-CurrentKeywords: list[dict] = []
+CurrentKeywords: list[str] = []
 
 CurrentConfigFiles: list[dict] = []
 
@@ -93,12 +87,14 @@ def init_window(*, headline_font: int | str) -> tuple[int | str]:
     return mw, pw, sw, aw
 
 def _theme_init():
-    c = Color('#0d0')
+    c = Color('b4c569')
     print(c.get_RGBA())
 
     with imgui.theme(tag='__ok_feel'):
         with imgui.theme_component(imgui.mvButton):
             imgui.add_theme_color(imgui.mvThemeCol_Button, c.get_RGBA())
+            imgui.add_theme_color(imgui.mvThemeCol_ButtonActive, c.get_RGBA())
+            imgui.add_theme_color(imgui.mvThemeCol_ButtonHovered, c.get_RGBA())
 
 
 @logger.catch
@@ -212,7 +208,7 @@ def preview_window():
 
     with imgui.texture_registry(label='textures'):
         imgui.add_dynamic_texture(label='preview-texture', width=500, height=500, default_value=texture_data, tag="texture_tag")
-        
+
     with imgui.window(label='Preview', tag=PREVIEW_WINDOW_ID, show=False) as window:
         imgui.add_image("texture_tag")
 
@@ -246,7 +242,7 @@ def _add_keywords_button(sender, app_data, user_data):
     s: str = imgui.get_value(FIELD_ID.KEYWORDS_INPUT)
     if len(s) <= 0: return
 
-    keywords = get_items(s)
+    keywords = ctrl.get_items_format(s)
 
     for keyword in keywords:
         if not keyword in CurrentKeywords:
@@ -265,7 +261,7 @@ def _remove_keywords_button(sender, app_data, user_data):
     s: str = imgui.get_value(FIELD_ID.KEYWORDS_INPUT)
     if len(s) <= 0: return
 
-    keywords = get_items(s)
+    keywords = ctrl.get_items_format(s)
 
     for keyword in keywords:
         if keyword in CurrentKeywords:
@@ -291,32 +287,21 @@ def _save_button(sender, app_data, user_data):
     if not os.path.exists(CurrentFilePath):
         return
 
-    filename = imgui.get_value(FIELD_ID.FILENAME)
-    title = imgui.get_value(FIELD_ID.TITLE)
-    description = imgui.get_value(FIELD_ID.DESCRIPTION)
-    categories = imgui.get_value(FIELD_ID.CATEGORIES)
-    release = imgui.get_value(FIELD_ID.RELEASE)
-    keywords = CurrentKeywords  # keywords = imgui.get_value(FIELD_ID.KEYWORDS)
+    filename, title, description, categories, release, keywords, mature_content, illustration, editorial, price1, price2 = _get_attributes_view()
 
-    mature_content = imgui.get_value(FIELD_ID.MATURE_CONTENT)
-    illustration = imgui.get_value(FIELD_ID.ILLUSTRATION)
-    editorial = imgui.get_value(FIELD_ID.EDITORIAL)
-    price1 = imgui.get_value(FIELD_ID.PRICE_1)
-    price2 = imgui.get_value(FIELD_ID.PRICE_2)
-
-    if not is_valid(filename):
+    if not ctrl.is_valid(filename):
         logger.warning('The "filename" field is not filled in.')
         _show_error("Field error", 'The "filename" field is not filled in.')
         return
-    if not is_valid(title):
+    if not ctrl.is_valid(title):
         logger.warning('The "title" field is not filled in.')
         _show_error("Field error", 'The "title" field is not filled in.')
         return
-    if not is_valid(description):
+    if not ctrl.is_valid(description):
         logger.warning('The "description" field is not filled in.')
         _show_error("Field error", 'The "description" field is not filled in.')
         return
-    if not is_valid(keywords):
+    if not ctrl.is_valid(keywords):
         logger.warning('The "keyword(s)" field is not filled in.')
         _show_error("Field error", 'The "keywords" field is not filled in.')
         return
@@ -347,7 +332,7 @@ def _save_button(sender, app_data, user_data):
 
     ctrl.set_dir_config(CurrentDir, {'files': CurrentConfigFiles})
 
-    _click_feel(sender, 0.2)
+    _click_feel(sender, 0.7)
 
 def _clear_button(sender, app_data, user_data):
     if not os.path.exists(CurrentFilePath):
@@ -365,6 +350,18 @@ def _clear_button(sender, app_data, user_data):
     imgui.set_value(FIELD_ID.PRICE_1, 0.0)
     imgui.set_value(FIELD_ID.PRICE_2, 0.0)
 
+    _set_attributes_view('None',
+                         '',
+                         '',
+                         '',
+                         '',
+                         '',
+                         False,
+                         False,
+                         False,
+                         0.0,
+                         0.0)
+
     global CurrentKeywords
     CurrentKeywords = []
 
@@ -376,7 +373,7 @@ def _clear_button(sender, app_data, user_data):
 
     ctrl.set_dir_config(CurrentDir, {'files': CurrentConfigFiles})
 
-    _click_feel(sender, 0.2)
+    _click_feel(sender, 0.7)
 
 def _show_directiry_dialog():
     alle = ctrl.show_dialog(file_types)
@@ -405,7 +402,6 @@ def _show_files_list(files, dir_path):
             CurrentConfigFiles = files_config
 
 def _hide_files_list():
-
     _render_file_view([])
 
     global CurrentDir
@@ -426,7 +422,7 @@ def _render_file_view(files: list[str]):
         items.append(seletion)
 
 def _select_file(sender, app_data, user_data):
-    logger.debug(f'{sender} | {app_data} | {user_data}')
+    logger.debug(f'Select file: {sender} | {app_data} | {user_data}')
     def _selection(items):
         for item in items:
             if item != sender:
@@ -444,23 +440,23 @@ def _select_file(sender, app_data, user_data):
     global CurrentKeywords
     CurrentKeywords = []
 
-    file = select(CurrentConfigFiles, lambda item: item.get('path') == user_data[1])
+    file = ctrl.select(CurrentConfigFiles, lambda item: item.get('path') == user_data[1])
 
     if file is not None:
         logger.info(f'File data found. {file.get('path')}')
 
-        filename = cast_safe_get(file, 'filename', str)
-        title = cast_safe_get(file, 'title', str)
-        description = cast_safe_get(file, 'description', str)
-        categories = cast_safe_get(file, 'categories', str)
-        release = cast_safe_get(file, 'release', str)
-        keywords = cast_safe_get(file, 'keywords', list)
+        filename = ctrl.cast_safe_get(file, 'filename', str)
+        title = ctrl.cast_safe_get(file, 'title', str)
+        description = ctrl.cast_safe_get(file, 'description', str)
+        categories = ctrl.cast_safe_get(file, 'categories', str)
+        release = ctrl.cast_safe_get(file, 'release', str)
+        keywords = ctrl.cast_safe_get(file, 'keywords', list)
 
-        mature_content = cast_safe_get(file, 'mature_content', bool)
-        illustration = cast_safe_get(file, 'illustration', bool)
-        editorial = cast_safe_get(file, 'editorial', bool)
-        price1 = cast_safe_get(file, 'price1', float)
-        price2 = cast_safe_get(file, 'price2', float)
+        mature_content = ctrl.cast_safe_get(file, 'mature_content', bool)
+        illustration = ctrl.cast_safe_get(file, 'illustration', bool)
+        editorial = ctrl.cast_safe_get(file, 'editorial', bool)
+        price1 = ctrl.cast_safe_get(file, 'price1', float)
+        price2 = ctrl.cast_safe_get(file, 'price2', float)
 
         if filename is not None: imgui.set_value(FIELD_ID.FILENAME, filename)
         if title is not None: imgui.set_value(FIELD_ID.TITLE, title)
@@ -493,11 +489,56 @@ def _select_file(sender, app_data, user_data):
     imgui.set_value(FIELD_ID.PRICE_2, 0.0)
 
 
-
 # ========= UTILITIES ================================================
+
+def _get_attributes_view() -> tuple[str, str, str, str, str, list[str], bool, bool, bool, float, float]:
+    filename: str = imgui.get_value(FIELD_ID.FILENAME)
+    title: str = imgui.get_value(FIELD_ID.TITLE)
+    description: str = imgui.get_value(FIELD_ID.DESCRIPTION)
+    categories: str = imgui.get_value(FIELD_ID.CATEGORIES)
+    release: str = imgui.get_value(FIELD_ID.RELEASE)
+    keywords: list[str] = CurrentKeywords  # keywords = imgui.get_value(FIELD_ID.KEYWORDS)
+
+    mature_content: bool = imgui.get_value(FIELD_ID.MATURE_CONTENT)
+    illustration: bool = imgui.get_value(FIELD_ID.ILLUSTRATION)
+    editorial: bool = imgui.get_value(FIELD_ID.EDITORIAL)
+    price1: float = imgui.get_value(FIELD_ID.PRICE_1)
+    price2: float = imgui.get_value(FIELD_ID.PRICE_2)
+
+    return filename, title, description, categories, release, keywords, mature_content, illustration, editorial, price1, price2
+
+
+def _set_attributes_view(filename: str | None = None,
+                         title: str | None = None,
+                         description: str | None = None,
+                         categories: str | None = None,
+                         release: str | None = None,
+                         keywords: str | list[str] | None = None,
+                         mature_content: bool | None = None,
+                         illustration: bool | None = None,
+                         editorial: bool | None = None,
+                         price1: float | None = None,
+                         price2: float | None = None) -> None:
+    if isinstance(keywords, list):
+        keywords = ', '.join(keywords)
+
+    if filename is not None: imgui.set_value(FIELD_ID.FILENAME, filename)
+    if title is not None: imgui.set_value(FIELD_ID.TITLE, title)
+    if description is not None: imgui.set_value(FIELD_ID.DESCRIPTION, description)
+    if categories is not None: imgui.set_value(FIELD_ID.CATEGORIES, categories)
+    if release is not None: imgui.set_value(FIELD_ID.RELEASE, release)
+    if keywords is not None: imgui.set_value(FIELD_ID.KEYWORDS, keywords)
+
+    if mature_content is not None: imgui.set_value(FIELD_ID.MATURE_CONTENT, mature_content)
+    if illustration is not None: imgui.set_value(FIELD_ID.ILLUSTRATION, illustration)
+    if editorial is not None: imgui.set_value(FIELD_ID.EDITORIAL, editorial)
+    if price1 is not None: imgui.set_value(FIELD_ID.PRICE_1, price1)
+    if price2 is not None: imgui.set_value(FIELD_ID.PRICE_2, price2)
+
 
 def _log(sender, app_data, user_data):
     logger.debug(f'{sender} | {app_data} | {user_data}')
+
 def _show_window(tag: int | str):
     imgui.show_item(tag)
 
@@ -538,7 +579,6 @@ def _click_feel(tag: int | str, delta: float):
     imgui.bind_item_theme(tag, 0)
 
 
-
 # ========= DEPRECATED ===============================================
 @deprecated
 def primary_window():
@@ -561,41 +601,7 @@ def primary_window():
 
 
 # ========= OTHER ====================================================
-def is_valid(value: str | list) -> bool:
-    return value is not None and len(value) > 0
-def select(collection: list[T], func: Callable[[T], bool]):
-    for item in collection:
-        if func(item):
-            return item
-    return None
 
-def cast_safe_get(collection: dict, key: str, type: ClassType) -> ClassType | None:
-    if not isinstance(collection, dict) or collection is None:
-        return None
-
-    value = collection.get(key)
-
-    if value is None:
-        return None
-
-    return type(value)
-
-def get_items(value: str,*, split_char: str = ',', clerar_chars: str = ' ', is_lower: bool = True) -> list[str]:
-    value = value.replace('\n', ' ').replace('\t', ' ')
-    value = re.sub('\\s{2,}', ' ', value)
-    temp_values = value.split(split_char)
-    collection: list[str] = []
-
-    for temp_value in temp_values:
-        temp_value = temp_value.strip(clerar_chars)
-
-        if is_lower:
-            temp_value = temp_value.lower()
-
-        if len(temp_value) > 0:
-            collection.append(temp_value)
-
-    return collection
 
 # imgui.add_menu_item(label='Open...')
 # imgui.add_menu_item(label='Save')
