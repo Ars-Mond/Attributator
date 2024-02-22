@@ -1,7 +1,7 @@
 import os
 import time
-import pyperclip
 
+import pyperclip
 import xdialog
 from loguru import logger
 
@@ -10,7 +10,7 @@ import dearpygui.demo as demo
 
 import src.core.control as ctrl
 import src.ui.utilities as util
-import src.ui.font_loader as fl
+import src.ui.theme as theme
 
 from src.ui.color import Color
 from src.core.deprecated import deprecated
@@ -31,6 +31,7 @@ ABOUT_ID = 'about-window-id'
 PREVIEW_WINDOW_ID = 'preview-window-id'
 
 FILE_LIST_ID = 'file-list-id'
+
 class FIELD_ID:
     FILENAME = 'filename-id'
     TITLE = 'title-id'
@@ -55,30 +56,44 @@ class BUTTON_ID:
     CLEAR = 'clear-button-id'
     SAVE_PHOTO_METADATA = 'save-photo-metadata-button-id'
 
+class SETTINGS_ID:
+    class THEME_TAB:
+        THEME_COMBO = 'theme-combo-id'
+
 class TEXTURE_ID:
     CLOSE_BUTTON = 'close-texture-id'
 
-# ========= FONT =====================================================
+# ========= INIT_DATA ================================================
 HEADLINE_FONT_ID: int | str = ''
+DATA_PATH: str = ''
 
 
 # ========= DATA =====================================================
 CurrentDir = ''
 CurrentFilePath = ''
 CurrentKeywords: list[str] = []
-
 CurrentConfigFiles: list[dict] = []
 
-
+SittingsConfig: ConfigProvider = None
 
 # ========= TEST =====================================================
 OLD_INPUT_TEXT_VALUE = ''
 
 
 # ========= WINDOWS ==================================================
-def init_window(*, headline_font: int | str) -> tuple[int | str]:
+def init_window(*, abs_data_path: str, headline_font: int | str) -> tuple[int | str]:
     global HEADLINE_FONT_ID
     HEADLINE_FONT_ID = headline_font
+
+    global DATA_PATH
+    DATA_PATH = abs_data_path
+
+    global SittingsConfig
+    SittingsConfig = ConfigProvider(DATA_PATH, 'settings')
+
+    # imgui.bind_theme(light_theme)
+
+    _settings_init()
 
     _theme_init()
 
@@ -90,16 +105,6 @@ def init_window(*, headline_font: int | str) -> tuple[int | str]:
     logger.info('Inited windows')
 
     return mw, pw, sw, aw
-
-def _theme_init():
-    c = Color('b4c569')
-    print(c.get_RGBA())
-
-    with imgui.theme(tag='__ok_feel'):
-        with imgui.theme_component(imgui.mvButton):
-            imgui.add_theme_color(imgui.mvThemeCol_Button, c.get_RGBA())
-            imgui.add_theme_color(imgui.mvThemeCol_ButtonActive, c.get_RGBA())
-            imgui.add_theme_color(imgui.mvThemeCol_ButtonHovered, c.get_RGBA())
 
 
 @logger.catch
@@ -115,13 +120,12 @@ def main_window():
 
                 util.separate_spacer(heigth=10)
 
-                imgui.add_menu_item(label='Settings', enabled=False, callback=lambda: _show_window_center(SETTINGS_WINDOW_ID))
+                imgui.add_menu_item(label='Settings...', enabled=True, callback=lambda: _show_window_center(SETTINGS_WINDOW_ID))
 
             with imgui.menu(label='Window'):
-                imgui.add_menu_item(label='Preview', enabled=False, callback=lambda: _show_window(PREVIEW_WINDOW_ID))
+                imgui.add_menu_item(label='Preview...', enabled=True, callback=lambda: _show_window(PREVIEW_WINDOW_ID))
                 imgui.add_menu_item(label='Tag Manager', enabled=False)
-                imgui.add_menu_item(label='Demo', enabled=False, callback=demo.show_demo)
-                imgui.add_menu_item(label='Dialog', enabled=False)
+                imgui.add_menu_item(label='Demo', enabled=True, callback=demo.show_demo)
 
             with imgui.menu(label='Help'):
                 imgui.add_menu_item(label='Docs', enabled=False, callback=lambda: xdialog.info('Звоните Сене!', 'Что то сломалось!? Звони Адмэну! тел: 8 800 333-35-35.'))
@@ -216,12 +220,20 @@ def preview_window():
 
 def settings_window():
     with imgui.window(label='Settings', tag=SETTINGS_WINDOW_ID, min_size=[640, 480], show=False, modal=True, no_collapse=True, no_close=True) as window:
-        imgui.add_text(default_value='Coming soon.')
+
+        with imgui.child_window(height=-30, border=False):
+            with imgui.tab_bar():
+                with imgui.tab(label='Theme'):
+                    e_theme = imgui.add_combo(['default', 'light'], tag=SETTINGS_ID.THEME_TAB.THEME_COMBO, default_value='default')
+
+                with imgui.tab(label='Base otion'):
+                    imgui.add_text("Coming soon.")
+
 
         with imgui.group(horizontal=True):
-            imgui.add_button(label="Save")
-            imgui.add_button(label="Cancel", callback=lambda: imgui.hide_item(SETTINGS_WINDOW_ID))
-        pass
+            imgui.add_button(label="Save", callback=_save_settings, user_data=[e_theme])
+            imgui.add_button(label="Cancel", callback=_cancel_settings)
+
 
     return window
 
@@ -359,17 +371,8 @@ def _clear_button(sender, app_data, user_data):
     imgui.set_value(FIELD_ID.PRICE_1, 0.0)
     imgui.set_value(FIELD_ID.PRICE_2, 0.0)
 
-    _set_attributes_view('None',
-                         '',
-                         '',
-                         '',
-                         '',
-                         '',
-                         False,
-                         False,
-                         False,
-                         0.0,
-                         0.0)
+    _set_attributes_view('None', '', '', '', '', '',
+                         False, False, False, 0.0, 0.0)
 
     global CurrentKeywords
     CurrentKeywords = []
@@ -467,35 +470,14 @@ def _select_file(sender, app_data, user_data):
         price1 = ctrl.cast_safe_get(file, 'price1', float)
         price2 = ctrl.cast_safe_get(file, 'price2', float)
 
-        if filename is not None: imgui.set_value(FIELD_ID.FILENAME, filename)
-        if title is not None: imgui.set_value(FIELD_ID.TITLE, title)
-        if description is not None: imgui.set_value(FIELD_ID.DESCRIPTION, description)
-        if categories is not None: imgui.set_value(FIELD_ID.CATEGORIES, categories)
-        if release is not None: imgui.set_value(FIELD_ID.RELEASE, release)
-        if keywords is not None: imgui.set_value(FIELD_ID.KEYWORDS, ', '.join(keywords))
-
-        if mature_content is not None: imgui.set_value(FIELD_ID.MATURE_CONTENT, mature_content)
-        if illustration is not None: imgui.set_value(FIELD_ID.ILLUSTRATION, illustration)
-        if editorial is not None: imgui.set_value(FIELD_ID.EDITORIAL, editorial)
-        if price1 is not None: imgui.set_value(FIELD_ID.PRICE_1, price1)
-        if price2 is not None: imgui.set_value(FIELD_ID.PRICE_2, price2)
+        _set_attributes_view(filename, title, description, categories, release, keywords,
+                             mature_content, illustration, editorial, price1, price2)
 
         CurrentKeywords = keywords
         return
 
-
-    imgui.set_value(FIELD_ID.FILENAME, os.path.basename(user_data[1]))
-    imgui.set_value(FIELD_ID.TITLE, '')
-    imgui.set_value(FIELD_ID.DESCRIPTION, '')
-    imgui.set_value(FIELD_ID.CATEGORIES, '')
-    imgui.set_value(FIELD_ID.RELEASE, '')
-    imgui.set_value(FIELD_ID.KEYWORDS, '')
-
-    imgui.set_value(FIELD_ID.MATURE_CONTENT, False)
-    imgui.set_value(FIELD_ID.ILLUSTRATION, False)
-    imgui.set_value(FIELD_ID.EDITORIAL, False)
-    imgui.set_value(FIELD_ID.PRICE_1, 0.0)
-    imgui.set_value(FIELD_ID.PRICE_2, 0.0)
+    _set_attributes_view(os.path.basename(user_data[1]), '', '', '', '', '',
+                         False, False, False, 0.0, 0.0)
 
 def _export_button(sender, app_data, user_data):
     if _check_can_edit(False):
@@ -519,6 +501,18 @@ def _export_button(sender, app_data, user_data):
         return
 
     ctrl.export_csv(path, datas, True)
+
+def _save_settings(sender, app_data, user_data):
+    s_theme = imgui.get_value(SETTINGS_ID.THEME_TAB.THEME_COMBO)
+    SittingsConfig.set_value('theme', s_theme)
+
+    _settings_init()
+    imgui.hide_item(SETTINGS_WINDOW_ID)
+    pass
+
+def _cancel_settings(sender, app_data, user_data):
+    imgui.hide_item(SETTINGS_WINDOW_ID)
+    pass
 
 
 
@@ -640,7 +634,49 @@ def primary_window():
     return w
 
 
-# ========= OTHER ====================================================
+# ========= INIT =====================================================
+def _settings_init():
+    def _get(collection: dict, name_item: str):
+        if collection is None:
+            return None
+        return collection.get(name_item)
+
+
+    setings: dict = SittingsConfig.get_all()
+
+    s_theme = _get(setings, 'theme')
+    # s_lang = setings.get('lang')
+
+    current_theme: int | str = ''
+    match s_theme:
+        case 'default':
+            current_theme = 0
+
+        case 'light':
+            current_theme = theme.r()
+
+        case _:
+            current_theme = 0
+
+    # current_lang: int | str = 0
+    # match s_lang:
+    #     case 'en_EN':
+    #         current_lang = 0
+
+
+    imgui.bind_theme(current_theme)
+
+def _theme_init():
+    c = Color('b4c569')
+    print(c.get_RGBA())
+
+    with imgui.theme(tag='__ok_feel'):
+        with imgui.theme_component(imgui.mvButton):
+            imgui.add_theme_color(imgui.mvThemeCol_Button, c.get_RGBA())
+            imgui.add_theme_color(imgui.mvThemeCol_ButtonActive, c.get_RGBA())
+            imgui.add_theme_color(imgui.mvThemeCol_ButtonHovered, c.get_RGBA())
+
+
 
 # w_close_button, h_close_button, c_close_button, d_close_button = imgui.load_image(os.path.abspath('./data/images/close2.png'))
 #

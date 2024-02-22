@@ -9,20 +9,30 @@ import dearpygui.demo as demo
 from src.config.config_provider import ConfigProvider
 import src.ui.application as app
 import src.ui.font_loader as fl
-import src.ui.theme as theme
 
-RESOURCE_PATH = os.path.abspath('./resources')
-IMAGES_PATH = os.path.join(RESOURCE_PATH, './images')
+
+# ========= INIT_PATH ================================================
+application_path = ''
+if getattr(sys, 'frozen', False):
+    application_path = os.path.dirname(sys.executable)
+elif __file__:
+    application_path = os.path.dirname(__file__)
+else:
+    application_path = os.path.abspath('./')
+
+RESOURCE_PATH = os.path.join(application_path, 'resources')
+DATA_PATH = os.path.join(application_path, 'data')
+
+IMAGES_PATH = os.path.join(RESOURCE_PATH, 'images')
+SAVE_FILE_PATH = os.path.abspath('./data/save.ini')
+
 
 # ========= LOGGER ===================================================
 logger_format = '[{time} | {level:10}]: {message}'
-logger_format2 = '[<green>{time}</green> | {level:10}]: {message}'
 
 logger.add('./data/logs/debug.log', format=logger_format, rotation='1 MB', compression='zip')
 
-
-init_file = os.path.abspath('./data/imgui.ini')
-font_path = os.path.join(RESOURCE_PATH, './font/')
+# logger_format2 = '[<green>{time}</green> | {level:10}]: {message}'
 
 # ========= CONFIG PROVIDER ==========================================
 SETTINGS_CONFIG_PATH = RESOURCE_PATH
@@ -36,7 +46,7 @@ tags = ConfigProvider(path_file=TAGS_CONFIG_PATH, name_file=TAGS_CONFIG_NAME)
 
 
 def save_init():
-    imgui.save_init_file(init_file)
+    imgui.save_init_file(SAVE_FILE_PATH)
 
 if __name__ == '__main__':
     @logger.catch
@@ -44,22 +54,22 @@ if __name__ == '__main__':
         logger.info('Start App!')
         imgui.create_context()
 
+        font_path = os.path.join(RESOURCE_PATH, 'font/')
         main_font, headline_font = fl.load(font_path)
         imgui.bind_font(main_font)
 
-        windows = app.init_window(headline_font=headline_font)
+        windows = app.init_window(abs_data_path=DATA_PATH, headline_font=headline_font)
 
         # imgui.set_primary_window(app.primary_window(), True)
 
         # demo.show_demo()
 
-        # global_theme = theme.l()
-
-        # imgui.bind_theme(global_theme)
-        imgui.configure_app(docking=True, docking_space=True, init_file=init_file)
+        imgui.configure_app(docking=True, docking_space=True, init_file=SAVE_FILE_PATH)
         imgui.create_viewport(title='Attributator')
+
         imgui.set_viewport_small_icon(os.path.join(IMAGES_PATH, 'icon.ico'))
-        imgui.set_viewport_large_icon(os.path.join(IMAGES_PATH, 'icon.png'))
+        imgui.set_viewport_large_icon(os.path.join(IMAGES_PATH, 'icon_x2.ico'))
+
         imgui.setup_dearpygui()
 
         imgui.set_exit_callback(callback=lambda: save_init())
