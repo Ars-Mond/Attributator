@@ -3,11 +3,14 @@ import time
 
 import pyperclip
 import xdialog
+import numpy as np
 from loguru import logger
+from PIL import Image
 
 import dearpygui.dearpygui as imgui
 import dearpygui.demo as demo
 
+import src.core.texturer as texr
 import src.core.control as ctrl
 import src.ui.utilities as util
 import src.ui.theme as theme
@@ -18,12 +21,12 @@ from src.config.config_provider import ConfigProvider
 
 
 # ========= DEFINE ===================================================
-image_file_types = ['jpg', 'png']
-video_file_types = ['mp4']
+ImageFileTypes = ['jpg', 'png']
+VideoFileTypes = ['mp4']
 
 file_types = []
-file_types.extend(image_file_types)
-file_types.extend(video_file_types)
+file_types.extend(ImageFileTypes)
+file_types.extend(VideoFileTypes)
 
 MAIN_WINDOW_ID = 'main-window-id'
 SETTINGS_WINDOW_ID = 'settings-window-id'
@@ -31,6 +34,7 @@ ABOUT_ID = 'about-window-id'
 PREVIEW_WINDOW_ID = 'preview-window-id'
 
 FILE_LIST_ID = 'file-list-id'
+TEXTURE_REGISTRY_ID = 'texture_registry-id'
 
 class FIELD_ID:
     FILENAME = 'filename-id'
@@ -61,7 +65,11 @@ class SETTINGS_ID:
         THEME_COMBO = 'theme-combo-id'
 
 class TEXTURE_ID:
+    PREVIEW = 'preview-texture-id'
     CLOSE_BUTTON = 'close-texture-id'
+
+class IMAGE_ID:
+    PREVIEW = 'preview-image-id'
 
 # ========= INIT_DATA ================================================
 HEADLINE_FONT_ID: int | str = ''
@@ -75,6 +83,12 @@ CurrentKeywords: list[str] = []
 CurrentConfigFiles: list[dict] = []
 
 SittingsConfig: ConfigProvider = None
+
+DefaultTextureSize = 720
+CurrentImageSize = 500
+DefaultTexture = np.zeros((DefaultTextureSize, DefaultTextureSize, 4)) # np.ones((4, 500, 500))
+CurrentTexture = DefaultTexture
+
 
 # ========= TEST =====================================================
 OLD_INPUT_TEXT_VALUE = ''
@@ -128,6 +142,8 @@ def main_window():
                 imgui.add_menu_item(label='Demo', enabled=True, callback=demo.show_demo)
 
             with imgui.menu(label='Help'):
+                imgui.add_menu_item(label="Toggle Fullscreen", callback=lambda: imgui.toggle_viewport_fullscreen())
+                util.separate_spacer(heigth=10)
                 imgui.add_menu_item(label='Docs', enabled=False, callback=lambda: xdialog.info('Звоните Сене!', 'Что то сломалось!? Звони Адмэну! тел: 8 800 333-35-35.'))
                 imgui.add_menu_item(label='About...', enabled=False, callback=lambda: _show_window(ABOUT_ID))
 
@@ -202,19 +218,17 @@ def main_window():
     return window
 
 def preview_window():
-    texture_data = []
-    for i in range(0, 500):
-        for j in range(0, 500):
-            texture_data.append(i / 620)
-            texture_data.append(i / 620)
-            texture_data.append(i / 620)
-            texture_data.append(1)
+    with imgui.texture_registry(tag=TEXTURE_REGISTRY_ID):
+        imgui.add_raw_texture(label='Preview Texture', width=DefaultTextureSize, height=DefaultTextureSize, default_value=DefaultTexture, format=imgui.mvFormat_Float_rgba, tag=TEXTURE_ID.PREVIEW)
 
-    with imgui.texture_registry(label='textures'):
-        imgui.add_dynamic_texture(label='preview-texture', width=500, height=500, default_value=texture_data, tag="texture_tag")
-
-    with imgui.window(label='Preview', tag=PREVIEW_WINDOW_ID, show=False) as window:
-        imgui.add_image("texture_tag")
+    with imgui.window(label='Preview', tag=PREVIEW_WINDOW_ID) as window:
+        imgui.add_slider_int(label='Image size', width=-150, max_value=1280, callback=_resize_image, default_value=CurrentImageSize)
+        _help_last([
+            'Change the size of the previews. Do not resize the image.',
+            'If the value is large and the image quality is low, there may be defects.'
+        ])
+        imgui.add_spacer(height=10)
+        imgui.add_image(TEXTURE_ID.PREVIEW, tag=IMAGE_ID.PREVIEW, width=CurrentImageSize, height=CurrentImageSize)
 
     return window
 
@@ -225,6 +239,9 @@ def settings_window():
             with imgui.tab_bar():
                 with imgui.tab(label='Theme'):
                     e_theme = imgui.add_combo(['default', 'light'], tag=SETTINGS_ID.THEME_TAB.THEME_COMBO, default_value='default')
+
+                with imgui.tab(label='Preview otion'):
+                    imgui.add_combo()
 
                 with imgui.tab(label='Base otion'):
                     imgui.add_text("Coming soon.")
@@ -434,11 +451,13 @@ def _render_file_view(files: list[str]):
         items.append(seletion)
 
 def _select_file(sender, app_data, user_data):
-    logger.debug(f'Select file: {sender} | {app_data} | {user_data}')
+    # logger.debug(f'Select file: {sender} | {app_data} | {user_data}')
     def _selection(items):
         for item in items:
             if item != sender:
                 imgui.set_value(item, False)
+            else:
+                imgui.set_value(item, True)
 
     _selection(user_data[0])
 
@@ -474,10 +493,12 @@ def _select_file(sender, app_data, user_data):
                              mature_content, illustration, editorial, price1, price2)
 
         CurrentKeywords = keywords
+        _update_preview()
         return
 
     _set_attributes_view(os.path.basename(user_data[1]), '', '', '', '', '',
                          False, False, False, 0.0, 0.0)
+    _update_preview()
 
 def _export_button(sender, app_data, user_data):
     if _check_can_edit(False):
@@ -493,7 +514,7 @@ def _export_button(sender, app_data, user_data):
 
     new_datas = []
     for data in datas:
-        if data.filename.split('.')[1] in video_file_types:
+        if data.filename.split('.')[1] in VideoFileTypes:
             new_datas.append(data)
 
     if len(new_datas) <= 0:
@@ -514,6 +535,37 @@ def _cancel_settings(sender, app_data, user_data):
     imgui.hide_item(SETTINGS_WINDOW_ID)
     pass
 
+def _update_preview():
+    file_type = os.path.basename(CurrentFilePath).split('.')[1]
+
+    global CurrentTexture
+    if file_type in ImageFileTypes:
+        img = Image.open(CurrentFilePath)
+        img = texr.resize_image(img, DefaultTextureSize)
+        img.convert('RGBA')
+        img = texr.append_size_image(img, (DefaultTextureSize, DefaultTextureSize))
+        tex = texr.img2array(img)
+        CurrentTexture = tex
+    elif file_type in VideoFileTypes:
+        img = texr.get_first_frame(CurrentFilePath)
+        img = texr.resize_image(img, DefaultTextureSize)
+        img.convert('RGBA')
+        img = texr.append_size_image(img, (DefaultTextureSize, DefaultTextureSize))
+        tex = texr.img2array(img)
+        CurrentTexture = tex
+    else:
+        CurrentTexture = DefaultTexture
+
+    imgui.set_value(TEXTURE_ID.PREVIEW, CurrentTexture)
+
+def _resize_image(sender, app_data, user_data):
+    value: int = imgui.get_value(sender)
+    global CurrentImageSize
+    if value == CurrentImageSize:
+        return
+    CurrentImageSize = value
+
+    imgui.configure_item(IMAGE_ID.PREVIEW, width=CurrentImageSize, height=CurrentImageSize)
 
 
 # ========= UTILITIES ================================================
@@ -641,10 +693,23 @@ def _settings_init():
             return None
         return collection.get(name_item)
 
+    def _deep_get(collection: dict[dict], _key: str) -> tuple:
+        if collection is None:
+            return None, None
+        keys = _key.split('.')
+        for key in keys:
+            collection = collection.get(key)
+            if collection is None:
+                return key, None
+            elif not isinstance(collection, dict):
+                return key, collection
+        return keys[-1], collection
+
 
     setings: dict = SittingsConfig.get_all()
 
     s_theme = _get(setings, 'theme')
+    key, s_quality = _deep_get(setings, 'preview.quality')
     # s_lang = setings.get('lang')
 
     current_theme: int | str = ''
@@ -668,7 +733,6 @@ def _settings_init():
 
 def _theme_init():
     c = Color('b4c569')
-    print(c.get_RGBA())
 
     with imgui.theme(tag='__ok_feel'):
         with imgui.theme_component(imgui.mvButton):

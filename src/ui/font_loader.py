@@ -5,13 +5,23 @@ import dearpygui.dearpygui as imgui
 MAIN_FONT: int | str = ''
 HEADLINE_FONT: int | str = ''
 
-big_let_start = 0x00C0  # Capital "А" in Cyrillic.
-big_let_end = 0x00DF  # Capital "Я" in Cyrillic.
-small_let_end = 0x00FF  # Little "я" in Cyrillic
-remap_big_let = 0x0410  # Initial number for the reassigned Cyrillic alphabet
+# Capital "А" in Cyrillic.
+big_let_start = 0x00C0
 
-alph_len = big_let_end - big_let_start + 1  # adds a shift from large letters to small ones
-alph_shift = remap_big_let - big_let_start  # adds a transition from reassignment to non-reassignment
+# Capital "Я" in Cyrillic.
+big_let_end = 0x00DF
+
+# Little "я" in Cyrillic
+small_let_end = 0x00FF
+
+# Initial number for the reassigned Cyrillic alphabet
+remap_big_let = 0x0410
+
+# adds a shift from large letters to small ones
+alph_len = big_let_end - big_let_start + 1
+
+# adds a transition from reassignment to non-reassignment
+alph_shift = remap_big_let - big_let_start
 
 def load(font_path: str):
     with imgui.font_registry():
